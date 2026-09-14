@@ -20,7 +20,7 @@ Every time you push to your fork, we will run hidden tests. Within 10 minutes yo
 
 You have a maximum of **5 submissions**.
 
-**Deadline: August 1, 2026 at 23:59 UTC-3** (3 late days allowed with penalty)
+**Deadline: Sunday, September 20, 2026 at 23:59 (UTC-3)** (2 late days allowed with penalty)
 
 ---
 

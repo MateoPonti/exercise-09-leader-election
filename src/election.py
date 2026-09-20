@@ -32,6 +32,7 @@ Algorithm (Garcia-Molina):
 import logging
 import os
 import threading
+import time
 from typing import Dict, Optional
 
 import requests
@@ -41,7 +42,7 @@ logger = logging.getLogger("election")
 # How long we wait for a higher node to answer an ELECTION message.
 ELECTION_TIMEOUT = float(os.environ.get("ELECTION_TIMEOUT", "2"))
 # How often heartbeat_loop() checks that the leader is still alive.
-HEARTBEAT_INTERVAL = float(os.environ.get("HEARTBEAT_INTERVAL", "5"))
+HEARTBEAT_INTERVAL = float(os.environ.get("HEARTBEAT_INTERVAL", "3"))
 # Generic timeout used for any other node-to-node HTTP call.
 REQUEST_TIMEOUT = float(os.environ.get("ELECTION_REQUEST_TIMEOUT", "2"))
 
@@ -284,6 +285,34 @@ def heartbeat_loop(interval: float = HEARTBEAT_INTERVAL, stop_event: Optional[th
         except Exception:
             logger.exception("heartbeat_check failed")
         ev.wait(interval)
+
+
+def bootstrap_election(retries: int = 6, delay: float = 1.5) -> None:
+    """
+    Kick off an initial election shortly after startup, retrying a few times.
+    Sibling node containers may still be starting up (DNS not yet resolvable,
+    connection refused, etc.), so a single early attempt can wrongly make a
+    node declare itself leader before a higher-id node is reachable. Once
+    that higher node boots and runs its own election, it will broadcast
+    COORDINATOR and correct everyone -- but retrying here gets the cluster
+    to agreement much faster than waiting for the first heartbeat tick.
+    """
+    st = get_state()
+    if not st.peer_url_list():
+        # Single-node deployment: nothing to elect against.
+        declare_victory()
+        return
+
+    def _run():
+        for attempt in range(retries):
+            time.sleep(delay)
+            with st.lock:
+                already_have_leader = st.leader_id is not None
+            if already_have_leader:
+                return
+            start_election()
+
+    threading.Thread(target=_run, daemon=True).start()
 
 
 def start_heartbeat_thread() -> Optional[threading.Thread]:

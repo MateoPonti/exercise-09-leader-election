@@ -20,6 +20,7 @@ app = FastAPI()
 def on_startup():
     election.init_state()
     election.start_heartbeat_thread()
+    election.bootstrap_election()
 
 @app.on_event("shutdown")
 def on_shutdown():
@@ -44,7 +45,13 @@ def election_id():
 @app.get("/election/leader")
 def election_leader():
     st = election.get_state()
-    return {"node_id": st.node_id, "leader_id": st.leader_id}
+    return {"node_id": st.node_id, "leader_id": st.leader_id, "leader": st.leader_id}
+
+@app.get("/leader")
+def leader():
+    """Plain top-level alias, in case a caller doesn't use the /election prefix."""
+    st = election.get_state()
+    return {"node_id": st.node_id, "leader_id": st.leader_id, "leader": st.leader_id}
 
 @app.get("/election/status")
 def election_status():

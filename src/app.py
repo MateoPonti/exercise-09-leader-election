@@ -2,12 +2,28 @@ from datetime import datetime, timezone
 from fastapi import Depends, FastAPI, HTTPException, Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from src import election
 from src.database import Base, engine, get_db
 from src.models import Node
-from src.schemas import NodeCreate, NodeResponse, NodeUpdate
+from src.schemas import (
+    CoordinatorMessage,
+    ElectionMessage,
+    NodeCreate,
+    NodeResponse,
+    NodeUpdate,
+)
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI()
+
+@app.on_event("startup")
+def on_startup():
+    election.init_state()
+    election.start_heartbeat_thread()
+
+@app.on_event("shutdown")
+def on_shutdown():
+    election.stop_heartbeat()
 
 @app.get("/health")
 def health(db: Session = Depends(get_db)):
@@ -18,6 +34,42 @@ def health(db: Session = Depends(get_db)):
         db_status = "disconnected"
     count = db.query(Node).filter(Node.status == "active").count()
     return {"status": "ok", "db": db_status, "nodes_count": count}
+
+@app.get("/election/id")
+def election_id():
+    """Lets peers discover this node's numeric id."""
+    st = election.get_state()
+    return {"node_id": st.node_id}
+
+@app.get("/election/leader")
+def election_leader():
+    st = election.get_state()
+    return {"node_id": st.node_id, "leader_id": st.leader_id}
+
+@app.get("/election/status")
+def election_status():
+    st = election.get_state()
+    return {
+        "node_id": st.node_id,
+        "leader_id": st.leader_id,
+        "election_in_progress": st.election_in_progress,
+        "peers": st.peer_url_list(),
+    }
+
+@app.post("/election/start")
+def election_start():
+    """Manually trigger an election (also used by tests / operators)."""
+    return election.start_election()
+
+@app.post("/election/message")
+def election_message(msg: ElectionMessage):
+    """Receive an ELECTION message from a lower-id node."""
+    return election.handle_election_message(msg.from_id)
+
+@app.post("/election/coordinator")
+def election_coordinator(msg: CoordinatorMessage):
+    """Receive a COORDINATOR message announcing the new leader."""
+    return election.handle_coordinator_message(msg.leader_id)
 
 @app.post("/api/nodes", response_model=NodeResponse, status_code=201)
 def register_node(node: NodeCreate, db: Session = Depends(get_db)):

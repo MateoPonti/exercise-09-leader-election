@@ -1,5 +1,0 @@
-# TODO: 4 services: db + 3 node instances
-# Each node needs:
-# - NODE_ID env var (1, 2, 3)
-# - Different port mapping (8081, 8082, 8083)
-# - PEERS env var listing other nodes (e.g., "http://node-2:8080,http://node-3:8080")
